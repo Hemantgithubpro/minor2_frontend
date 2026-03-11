@@ -97,11 +97,17 @@ function createFileSession(
 
 export default function Home() {
   const defaultRoomId = process.env.NEXT_PUBLIC_DEFAULT_ROOM ?? "phase1-room";
-  const wsUrl =
-    process.env.NEXT_PUBLIC_WS_URL ??
-    (typeof window !== "undefined"
-      ? `ws://${window.location.hostname}:1234`
-      : "ws://127.0.0.1:1234");
+  const [wsUrl] = useState<string>(() => {
+    if (process.env.NEXT_PUBLIC_WS_URL) {
+      return process.env.NEXT_PUBLIC_WS_URL;
+    }
+
+    if (typeof window !== "undefined") {
+      return `ws://${window.location.hostname}:1234`;
+    }
+
+    return "";
+  });
   const [userProfile] = useState<UserProfile>(() => createRandomUserProfile());
   const [roomId, setRoomId] = useState(defaultRoomId);
   const [roomInput, setRoomInput] = useState(defaultRoomId);
@@ -110,22 +116,17 @@ export default function Home() {
     Array<{ id: number; name: string; color: string }>
   >([]);
   const [status, setStatus] = useState<ConnectionStatus>("offline");
-  const [sessions, setSessions] = useState<Map<string, FileSession>>(() => {
-    const firstFile = PHASE1_FILES[0];
-    const firstSession = createFileSession(
-      firstFile,
-      wsUrl,
-      defaultRoomId,
-      userProfile,
-    );
-    return new Map([[firstFile.path, firstSession]]);
-  });
+  const [sessions, setSessions] = useState<Map<string, FileSession>>(new Map());
   const sessionsRef = useRef<Map<string, FileSession>>(sessions);
 
   const currentSession = sessions.get(selectedPath) ?? null;
 
   const handleSelect = (path: string) => {
     setSelectedPath(path);
+
+    if (!userProfile || !wsUrl) {
+      return;
+    }
 
     setSessions((previous) => {
       if (previous.has(path)) {
@@ -159,6 +160,14 @@ export default function Home() {
       selectedPath,
     });
 
+    if (!userProfile || !wsUrl) {
+      console.error("[phase1-client] Cannot join room before client init", {
+        hasUserProfile: Boolean(userProfile),
+        hasWsUrl: Boolean(wsUrl),
+      });
+      return;
+    }
+
     setCollaborators([]);
     setRoomId(nextRoom);
 
@@ -191,6 +200,33 @@ export default function Home() {
       awareness: currentSession.awareness,
     };
   }, [currentSession]);
+
+  useEffect(() => {
+    if (!userProfile || !wsUrl) {
+      return;
+    }
+
+    // Defer state update to avoid synchronous setState in effect body.
+    queueMicrotask(() => {
+      setSessions((previous) => {
+        if (previous.size > 0) {
+          return previous;
+        }
+
+        const initialFile =
+          PHASE1_FILES.find((entry) => entry.path === selectedPath) ??
+          PHASE1_FILES[0];
+        const initialSession = createFileSession(
+          initialFile,
+          wsUrl,
+          roomId,
+          userProfile,
+        );
+
+        return new Map([[initialFile.path, initialSession]]);
+      });
+    });
+  }, [userProfile, wsUrl, selectedPath, roomId]);
 
   useEffect(() => {
     if (!currentSession) {
@@ -313,9 +349,9 @@ export default function Home() {
           </button>
           <span
             className="user-chip"
-            style={{ borderColor: userProfile.color }}
+            style={{ borderColor: userProfile?.color ?? "#7ad7ff" }}
           >
-            You: {userProfile.name}
+            You: {userProfile?.name ?? "initializing..."}
           </span>
           <ConnectionBadge status={status} />
         </div>
