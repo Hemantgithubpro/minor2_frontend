@@ -9,6 +9,34 @@ import * as Y from "yjs";
 
 type ConnectionStatus = "connected" | "reconnecting" | "offline";
 
+type ConnectionEvent =
+  | {
+      type: "connecting";
+      url: string;
+      roomId: string;
+      filePath: string;
+    }
+  | {
+      type: "connected";
+      url: string;
+      roomId: string;
+      filePath: string;
+    }
+  | {
+      type: "error";
+      message: string;
+      roomId: string;
+      filePath: string;
+    }
+  | {
+      type: "closed";
+      code?: number;
+      reason?: string;
+      wasClean?: boolean;
+      roomId: string;
+      filePath: string;
+    };
+
 interface ProviderOptions {
   wsUrl: string;
   roomId: string;
@@ -54,6 +82,7 @@ export class ReconnectingYjsProvider {
   private pendingUpdates: Uint8Array[] = [];
   private status: ConnectionStatus = "offline";
   private statusListeners = new Set<(status: ConnectionStatus) => void>();
+  private eventListeners = new Set<(event: ConnectionEvent) => void>();
 
   constructor(options: ProviderOptions) {
     this.wsUrl = options.wsUrl;
@@ -89,6 +118,12 @@ export class ReconnectingYjsProvider {
     url.searchParams.set("file", this.filePath);
 
     const socket = new WebSocket(url);
+    this.emitEvent({
+      type: "connecting",
+      url: url.toString(),
+      roomId: this.roomId,
+      filePath: this.filePath,
+    });
     socket.binaryType = "arraybuffer";
     this.socket = socket;
 
@@ -97,6 +132,12 @@ export class ReconnectingYjsProvider {
       this.setStatus("connected");
       this.flushPendingUpdates();
       this.sendFullAwarenessState();
+      this.emitEvent({
+        type: "connected",
+        url: url.toString(),
+        roomId: this.roomId,
+        filePath: this.filePath,
+      });
     };
 
     socket.onmessage = (event) => {
@@ -119,11 +160,26 @@ export class ReconnectingYjsProvider {
     };
 
     socket.onerror = () => {
+      this.emitEvent({
+        type: "error",
+        message: "WebSocket connection error",
+        roomId: this.roomId,
+        filePath: this.filePath,
+      });
       socket.close();
     };
 
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       this.socket = null;
+
+      this.emitEvent({
+        type: "closed",
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+        roomId: this.roomId,
+        filePath: this.filePath,
+      });
 
       if (this.isDisposed) {
         this.setStatus("offline");
@@ -163,6 +219,14 @@ export class ReconnectingYjsProvider {
 
     return () => {
       this.statusListeners.delete(listener);
+    };
+  }
+
+  onConnectionEvent(listener: (event: ConnectionEvent) => void): () => void {
+    this.eventListeners.add(listener);
+
+    return () => {
+      this.eventListeners.delete(listener);
     };
   }
 
@@ -259,6 +323,12 @@ export class ReconnectingYjsProvider {
     this.status = status;
     for (const listener of this.statusListeners) {
       listener(status);
+    }
+  }
+
+  private emitEvent(event: ConnectionEvent): void {
+    for (const listener of this.eventListeners) {
+      listener(event);
     }
   }
 }

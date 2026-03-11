@@ -146,8 +146,18 @@ export default function Home() {
   const handleJoinRoom = () => {
     const nextRoom = roomInput.trim();
     if (!nextRoom || nextRoom === roomId) {
+      console.info("[phase1-client] Join Room skipped", {
+        roomInput: nextRoom,
+        currentRoom: roomId,
+      });
       return;
     }
+
+    console.info("[phase1-client] Join Room requested", {
+      room: nextRoom,
+      wsUrl,
+      selectedPath,
+    });
 
     setCollaborators([]);
     setRoomId(nextRoom);
@@ -184,6 +194,30 @@ export default function Home() {
     }
 
     return currentSession.provider.onStatusChange(setStatus);
+  }, [currentSession]);
+
+  useEffect(() => {
+    if (!currentSession) {
+      return;
+    }
+
+    return currentSession.provider.onConnectionEvent((event) => {
+      if (event.type === "connected") {
+        console.info("[phase1-client] WebSocket connected", event);
+      }
+
+      if (event.type === "connecting") {
+        console.info("[phase1-client] WebSocket connecting", event);
+      }
+
+      if (event.type === "error") {
+        console.error("[phase1-client] WebSocket error", event);
+      }
+
+      if (event.type === "closed") {
+        console.warn("[phase1-client] WebSocket closed", event);
+      }
+    });
   }, [currentSession]);
 
   useEffect(() => {
