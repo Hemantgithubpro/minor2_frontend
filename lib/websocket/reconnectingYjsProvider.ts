@@ -141,28 +141,45 @@ export class ReconnectingYjsProvider {
     };
 
     socket.onmessage = (event) => {
-      if (!(event.data instanceof ArrayBuffer)) {
+      const handleDecodedMessage = (buffer: ArrayBuffer) => {
+        const decoded = decodeMessage(buffer);
+        if (!decoded) {
+          return;
+        }
+
+        if (decoded.type === UPDATE_MESSAGE) {
+          Y.applyUpdate(this.doc, decoded.payload, this);
+        }
+
+        if (decoded.type === AWARENESS_MESSAGE) {
+          applyAwarenessUpdate(this.awareness, decoded.payload, this);
+        }
+      };
+
+      if (event.data instanceof ArrayBuffer) {
+        handleDecodedMessage(event.data);
         return;
       }
 
-      const decoded = decodeMessage(event.data);
-      if (!decoded) {
-        return;
-      }
-
-      if (decoded.type === UPDATE_MESSAGE) {
-        Y.applyUpdate(this.doc, decoded.payload, this);
-      }
-
-      if (decoded.type === AWARENESS_MESSAGE) {
-        applyAwarenessUpdate(this.awareness, decoded.payload, this);
+      if (event.data instanceof Blob) {
+        event.data
+          .arrayBuffer()
+          .then((buffer) => handleDecodedMessage(buffer))
+          .catch(() => {
+            this.emitEvent({
+              type: "error",
+              message: "Failed to decode Blob websocket message",
+              roomId: this.roomId,
+              filePath: this.filePath,
+            });
+          });
       }
     };
 
     socket.onerror = () => {
       this.emitEvent({
         type: "error",
-        message: "WebSocket connection error",
+        message: `WebSocket connection error (readyState=${socket.readyState})`,
         roomId: this.roomId,
         filePath: this.filePath,
       });
