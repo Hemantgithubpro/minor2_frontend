@@ -38,6 +38,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 12px 16px;
   border-radius: 12px;
   border: 1px solid var(--border);
@@ -54,6 +56,55 @@ body {
   margin: 2px 0 0;
   font-size: 0.8rem;
   color: rgb(205 224 255 / 85%);
+}
+
+.top-bar-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.room-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: rgb(205 224 255 / 85%);
+}
+
+.room-input {
+  border: 1px solid var(--border);
+  background: rgb(11 21 38 / 75%);
+  color: var(--foreground);
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-width: 150px;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.8rem;
+}
+
+.join-room-btn {
+  border: 1px solid rgb(92 146 255 / 70%);
+  background: rgb(34 73 128 / 72%);
+  color: var(--foreground);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.join-room-btn:hover {
+  background: rgb(46 91 154 / 85%);
+}
+
+.user-chip {
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.76rem;
+  background: rgb(12 24 44 / 80%);
 }
 
 .workspace-grid {
@@ -123,10 +174,30 @@ body {
 
 .editor-header {
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 9px 12px;
   font-family: var(--font-mono), monospace;
   font-size: 0.82rem;
   color: rgb(225 239 255 / 90%);
+}
+
+.collab-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: auto;
+}
+
+.collab-chip {
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  background: rgb(12 24 44 / 85%);
 }
 
 .editor-shell {
@@ -172,5 +243,9 @@ body {
   .workspace-grid {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
+  }
+
+  .top-bar-controls {
+    width: 100%;
   }
 }

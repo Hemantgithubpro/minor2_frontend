@@ -16,6 +16,11 @@ const Editor = dynamic(() => import("@/components/Editor"), {
 
 type ConnectionStatus = "connected" | "reconnecting" | "offline";
 
+interface UserProfile {
+  name: string;
+  color: string;
+}
+
 interface FileSession {
   file: Phase1File;
   doc: Y.Doc;
@@ -24,9 +29,40 @@ interface FileSession {
   provider: ReconnectingYjsProvider;
 }
 
-const ROOM_ID = "phase1-room";
+const USER_COLORS = [
+  "#38bdf8",
+  "#22c55e",
+  "#f97316",
+  "#e879f9",
+  "#f43f5e",
+  "#facc15",
+  "#2dd4bf",
+];
 
-function createFileSession(file: Phase1File, wsUrl: string): FileSession {
+function createRandomUserProfile(): UserProfile {
+  const color = USER_COLORS[Math.floor(Math.random() * USER_COLORS.length)];
+  const suffix = Math.floor(100 + Math.random() * 900);
+  return {
+    name: `user-${suffix}`,
+    color,
+  };
+}
+
+function teardownSessions(sessions: Map<string, FileSession>): void {
+  for (const session of sessions.values()) {
+    session.provider.disconnect();
+    session.awareness.destroy();
+    session.doc.destroy();
+  }
+  sessions.clear();
+}
+
+function createFileSession(
+  file: Phase1File,
+  wsUrl: string,
+  roomId: string,
+  user: UserProfile,
+): FileSession {
   const doc = new Y.Doc();
   const yText = doc.getText("content");
 
@@ -36,14 +72,16 @@ function createFileSession(file: Phase1File, wsUrl: string): FileSession {
 
   const awareness = new Awareness(doc);
   awareness.setLocalStateField("user", {
-    name: `user-${Math.floor(Math.random() * 1000)}`,
+    name: user.name,
+    color: user.color,
   });
 
   const provider = new ReconnectingYjsProvider({
     wsUrl,
-    roomId: ROOM_ID,
+    roomId,
     filePath: file.path,
     doc,
+    awareness,
   });
 
   provider.connect();
@@ -58,12 +96,24 @@ function createFileSession(file: Phase1File, wsUrl: string): FileSession {
 }
 
 export default function Home() {
+  const defaultRoomId = process.env.NEXT_PUBLIC_DEFAULT_ROOM ?? "phase1-room";
   const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? "ws://127.0.0.1:1234";
+  const [userProfile] = useState<UserProfile>(() => createRandomUserProfile());
+  const [roomId, setRoomId] = useState(defaultRoomId);
+  const [roomInput, setRoomInput] = useState(defaultRoomId);
   const [selectedPath, setSelectedPath] = useState(PHASE1_FILES[0].path);
+  const [collaborators, setCollaborators] = useState<
+    Array<{ id: number; name: string; color: string }>
+  >([]);
   const [status, setStatus] = useState<ConnectionStatus>("offline");
   const [sessions, setSessions] = useState<Map<string, FileSession>>(() => {
     const firstFile = PHASE1_FILES[0];
-    const firstSession = createFileSession(firstFile, wsUrl);
+    const firstSession = createFileSession(
+      firstFile,
+      wsUrl,
+      defaultRoomId,
+      userProfile,
+    );
     return new Map([[firstFile.path, firstSession]]);
   });
   const sessionsRef = useRef<Map<string, FileSession>>(sessions);
@@ -84,8 +134,34 @@ export default function Home() {
       }
 
       const next = new Map(previous);
-      next.set(path, createFileSession(file, wsUrl));
+      next.set(path, createFileSession(file, wsUrl, roomId, userProfile));
       return next;
+    });
+  };
+
+  const handleJoinRoom = () => {
+    const nextRoom = roomInput.trim();
+    if (!nextRoom || nextRoom === roomId) {
+      return;
+    }
+
+    setCollaborators([]);
+    setRoomId(nextRoom);
+
+    setSessions((previous) => {
+      teardownSessions(previous);
+
+      const selectedFile =
+        PHASE1_FILES.find((entry) => entry.path === selectedPath) ??
+        PHASE1_FILES[0];
+      const freshSession = createFileSession(
+        selectedFile,
+        wsUrl,
+        nextRoom,
+        userProfile,
+      );
+
+      return new Map([[selectedFile.path, freshSession]]);
     });
   };
 
@@ -107,6 +183,38 @@ export default function Home() {
   }, [currentSession]);
 
   useEffect(() => {
+    if (!currentSession) {
+      return;
+    }
+
+    const awareness = currentSession.awareness;
+
+    const updateCollaborators = () => {
+      const next = Array.from(awareness.getStates().entries())
+        .map(([id, state]) => {
+          const user = state.user as
+            | { name?: string; color?: string }
+            | undefined;
+          return {
+            id,
+            name: user?.name ?? `user-${id}`,
+            color: user?.color ?? "#7ad7ff",
+          };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      setCollaborators(next);
+    };
+
+    awareness.on("change", updateCollaborators);
+    Promise.resolve().then(updateCollaborators);
+
+    return () => {
+      awareness.off("change", updateCollaborators);
+    };
+  }, [currentSession]);
+
+  useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
 
@@ -114,12 +222,7 @@ export default function Home() {
     const stableSessions = sessionsRef.current;
 
     return () => {
-      for (const session of stableSessions.values()) {
-        session.provider.disconnect();
-        session.awareness.destroy();
-        session.doc.destroy();
-      }
-      stableSessions.clear();
+      teardownSessions(stableSessions);
     };
   }, []);
 
@@ -128,9 +231,35 @@ export default function Home() {
       <header className="top-bar">
         <div>
           <h1>Phase 1 Collaborative Editor</h1>
-          <p className="subtitle">Room: {ROOM_ID}</p>
+          <p className="subtitle">Room: {roomId}</p>
         </div>
-        <ConnectionBadge status={status} />
+
+        <div className="top-bar-controls">
+          <label className="room-input-wrap" htmlFor="room-id-input">
+            <span>Room</span>
+            <input
+              id="room-id-input"
+              className="room-input"
+              value={roomInput}
+              onChange={(event) => setRoomInput(event.target.value)}
+              placeholder="phase1-room"
+            />
+          </label>
+          <button
+            type="button"
+            className="join-room-btn"
+            onClick={handleJoinRoom}
+          >
+            Join Room
+          </button>
+          <span
+            className="user-chip"
+            style={{ borderColor: userProfile.color }}
+          >
+            You: {userProfile.name}
+          </span>
+          <ConnectionBadge status={status} />
+        </div>
       </header>
 
       <section className="workspace-grid">
@@ -141,7 +270,21 @@ export default function Home() {
         />
 
         <div className="editor-panel">
-          <div className="editor-header">{selectedPath}</div>
+          <div className="editor-header">
+            <span>{selectedPath}</span>
+            <div className="collab-list" aria-label="collaborators">
+              {collaborators.map((collaborator) => (
+                <span
+                  key={collaborator.id}
+                  className="collab-chip"
+                  style={{ borderColor: collaborator.color }}
+                  title={collaborator.name}
+                >
+                  {collaborator.name}
+                </span>
+              ))}
+            </div>
+          </div>
           {editorSession ? (
             <Editor session={editorSession} />
           ) : (
