@@ -97,7 +97,11 @@ function createFileSession(
 
 export default function Home() {
   const defaultRoomId = process.env.NEXT_PUBLIC_DEFAULT_ROOM ?? "phase1-room";
-  const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? "ws://127.0.0.1:1234";
+  const wsUrl =
+    process.env.NEXT_PUBLIC_WS_URL ??
+    (typeof window !== "undefined"
+      ? `ws://${window.location.hostname}:1234`
+      : "ws://127.0.0.1:1234");
   const [userProfile] = useState<UserProfile>(() => createRandomUserProfile());
   const [roomId, setRoomId] = useState(defaultRoomId);
   const [roomInput, setRoomInput] = useState(defaultRoomId);
