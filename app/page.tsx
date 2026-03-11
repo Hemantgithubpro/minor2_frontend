@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Awareness } from "y-protocols/awareness";
 import * as Y from "yjs";
@@ -179,14 +179,18 @@ export default function Home() {
     });
   };
 
-  const editorSession: EditorSession | null = currentSession
-    ? {
-        filePath: currentSession.file.path,
-        language: currentSession.file.language,
-        yText: currentSession.yText,
-        awareness: currentSession.awareness,
-      }
-    : null;
+  const editorSession: EditorSession | null = useMemo(() => {
+    if (!currentSession) {
+      return null;
+    }
+
+    return {
+      filePath: currentSession.file.path,
+      language: currentSession.file.language,
+      yText: currentSession.yText,
+      awareness: currentSession.awareness,
+    };
+  }, [currentSession]);
 
   useEffect(() => {
     if (!currentSession) {
@@ -241,7 +245,24 @@ export default function Home() {
         })
         .sort((a, b) => a.name.localeCompare(b.name));
 
-      setCollaborators(next);
+      setCollaborators((previous) => {
+        if (previous.length === next.length) {
+          const unchanged = previous.every((item, index) => {
+            const candidate = next[index];
+            return (
+              item.id === candidate.id &&
+              item.name === candidate.name &&
+              item.color === candidate.color
+            );
+          });
+
+          if (unchanged) {
+            return previous;
+          }
+        }
+
+        return next;
+      });
     };
 
     awareness.on("change", updateCollaborators);

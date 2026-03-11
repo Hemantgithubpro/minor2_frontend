@@ -57,7 +57,7 @@ export default function Editor({ session }: EditorProps) {
       bindingRef.current?.destroy();
       bindingRef.current = null;
     };
-  }, [session]);
+  }, [session.filePath, session.language, session.yText, session.awareness]);
 
   return (
     <div className="editor-shell">
